@@ -50,8 +50,9 @@ def execute(filters=None):
 	columns = get_columns(filters)
 
 	res = get_result(filters, account_details)
+	report_summary = get_report_summary(res, filters)
 
-	return columns, res
+	return columns, res, None, None, report_summary
 
 
 def validate_filters(filters, account_details):
@@ -353,6 +354,73 @@ def set_outstanding_and_interest(gle, invoice_outstanding_by_gl_entry):
 
 	gle["outstanding_amount"] = invoice_outstanding_by_gl_entry[gle.gl_entry]
 	gle["interest_per_day"] = gle.outstanding_amount * 0.12 / 365
+
+
+def get_report_summary(data, filters):
+	currency = filters.get("presentation_currency") or filters.get("company_currency")
+	total_debit = 0
+	total_credit = 0
+	latest_invoice_summary = {}
+
+	for row in data:
+		if not row.get("posting_date"):
+			continue
+
+		total_debit += flt(row.get("debit"))
+		total_credit += flt(row.get("credit"))
+
+		invoice_key = row.get("sales_invoice_number") or row.get("purchase_invoice_number")
+		if invoice_key and row.get("outstanding_amount") is not None:
+			latest_invoice_summary[invoice_key] = {
+				"outstanding_amount": flt(row.get("outstanding_amount")),
+				"interest_per_day": flt(row.get("interest_per_day")),
+				"interest_as_on_date": flt(row.get("interest_as_on_date")),
+			}
+
+	total_outstanding = sum(
+		summary["outstanding_amount"] for summary in latest_invoice_summary.values()
+	)
+	total_interest_as_on_date = sum(
+		summary["interest_as_on_date"] for summary in latest_invoice_summary.values()
+	)
+
+	return [
+		{
+			"value": total_debit,
+			"indicator": "Blue",
+			"label": _("Total Debit"),
+			"datatype": "Currency",
+			"currency": currency,
+		},
+		{
+			"value": total_credit,
+			"indicator": "Orange",
+			"label": _("Total Credit"),
+			"datatype": "Currency",
+			"currency": currency,
+		},
+		{
+			"value": total_debit - total_credit,
+			"indicator": "Green" if total_debit >= total_credit else "Red",
+			"label": _("Balance"),
+			"datatype": "Currency",
+			"currency": currency,
+		},
+		{
+			"value": total_outstanding,
+			"indicator": "Red" if total_outstanding else "Green",
+			"label": _("Total Outstanding"),
+			"datatype": "Currency",
+			"currency": currency,
+		},
+		{
+			"value": total_interest_as_on_date,
+			"indicator": "Red" if total_interest_as_on_date else "Green",
+			"label": _("Interest As on Date@12%PA"),
+			"datatype": "Currency",
+			"currency": currency,
+		},
+	]
 
 
 def get_due_days(gle, current_date):

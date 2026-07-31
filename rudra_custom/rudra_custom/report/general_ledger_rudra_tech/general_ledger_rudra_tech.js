@@ -232,6 +232,74 @@ frappe.query_reports["General Ledger Rudra Tech"] = {
 	],
 	collapsible_filters: true,
 	seperate_check_filters: true,
+	onload: function () {
+		apply_rudra_summary_card_style();
+	},
+	after_datatable_render: function () {
+		apply_rudra_summary_card_style();
+	},
 };
 
 erpnext.utils.add_dimensions("General Ledger Rudra Tech", 15);
+
+function apply_rudra_summary_card_style() {
+	if ($("#rudra-general-ledger-summary-style").length) return;
+
+	$(`<style id="rudra-general-ledger-summary-style">
+		.report-summary {
+			gap: 16px !important;
+			margin: 12px 0 18px !important;
+			flex-wrap: wrap !important;
+		}
+
+		.report-summary .summary-card,
+		.report-summary .summary,
+		.report-summary .summary-item {
+			border: 2px solid #9aa4b2 !important;
+			border-radius: 10px !important;
+			padding: 14px 18px !important;
+			margin-right: 14px !important;
+			margin-bottom: 14px !important;
+			background: #f8fafc !important;
+			box-shadow: 0 3px 8px rgba(15, 23, 42, 0.14) !important;
+			min-width: 205px !important;
+			min-height: 96px !important;
+			height: auto !important;
+			overflow: visible !important;
+			display: flex !important;
+			flex-direction: column !important;
+			justify-content: center !important;
+		}
+
+		.report-summary .summary-label,
+		.report-summary .summary-card .summary-label,
+		.report-summary .summary-item .summary-label {
+			color: #1f2937 !important;
+			font-weight: 800 !important;
+			font-size: 13px !important;
+			line-height: 1.45 !important;
+			letter-spacing: 0.2px !important;
+			margin-bottom: 8px !important;
+			white-space: normal !important;
+			overflow: visible !important;
+			text-overflow: unset !important;
+			height: auto !important;
+			max-height: none !important;
+			display: block !important;
+		}
+
+		.report-summary .summary-value,
+		.report-summary .summary-card .summary-value,
+		.report-summary .summary-item .summary-value {
+			color: #020617 !important;
+			font-weight: 900 !important;
+			font-size: 18px !important;
+			line-height: 1.45 !important;
+			white-space: normal !important;
+			overflow: visible !important;
+			height: auto !important;
+			max-height: none !important;
+			display: block !important;
+		}
+	</style>`).appendTo("head");
+}
