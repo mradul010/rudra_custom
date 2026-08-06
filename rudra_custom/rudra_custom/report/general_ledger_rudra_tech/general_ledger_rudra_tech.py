@@ -383,6 +383,11 @@ def get_report_summary(data, filters):
 	total_interest_as_on_date = sum(
 		summary["interest_as_on_date"] for summary in latest_invoice_summary.values()
 	)
+	net_balance = total_debit - total_credit
+
+	if flt(net_balance, 2) == 0:
+		total_outstanding = 0
+		total_interest_as_on_date = 0
 
 	return [
 		{
@@ -400,8 +405,8 @@ def get_report_summary(data, filters):
 			"currency": currency,
 		},
 		{
-			"value": total_debit - total_credit,
-			"indicator": "Green" if total_debit >= total_credit else "Red",
+			"value": net_balance,
+			"indicator": "Green" if net_balance >= 0 else "Red",
 			"label": _("Balance"),
 			"datatype": "Currency",
 			"currency": currency,
