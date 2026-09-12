@@ -218,10 +218,6 @@ def enrich_invoice_details(gl_entries, filters):
 			)
 		}
 
-	invoice_outstanding_by_gl_entry = get_invoice_outstanding_by_gl_entry(
-		sales_invoice_names, purchase_invoice_names, filters
-	)
-
 	current_date = getdate(today())
 	for gle in gl_entries:
 		if cstr(gle.get("is_opening")) == "Yes":
@@ -250,7 +246,6 @@ def enrich_invoice_details(gl_entries, filters):
 					(invoice.due_date for invoice in invoices if invoice.due_date),
 					default=None,
 				)
-				set_outstanding_and_interest(gle, invoice_outstanding_by_gl_entry)
 		elif voucher_type == "Purchase Invoice":
 			invoices = [purchase_invoice_map[name] for name in invoice_names if name in purchase_invoice_map]
 			if invoices:
@@ -259,135 +254,31 @@ def enrich_invoice_details(gl_entries, filters):
 					(invoice.due_date for invoice in invoices if invoice.due_date),
 					default=None,
 				)
-				set_outstanding_and_interest(gle, invoice_outstanding_by_gl_entry)
 		else:
 			continue
 
 		if gle.get("posting_date"):
 			gle["due_days"] = get_due_days(gle, current_date)
-			if gle.get("interest_per_day") is not None:
-				gle["interest_as_on_date"] = gle.interest_per_day * gle.due_days
-
-
-def get_invoice_outstanding_by_gl_entry(sales_invoice_names, purchase_invoice_names, filters):
-	"""Return remaining invoice outstanding after each relevant GL Entry.
-
-	The value is calculated from GL movement, so a Sales Invoice increases receivable,
-	a Payment Entry / Journal Entry against that invoice reduces it, and the report
-	row shows the balance after that row. This avoids using the invoice master
-	outstanding value, which is same for every row.
-	"""
-	invoice_types_by_name = {}
-	for name in sales_invoice_names:
-		invoice_types_by_name[name] = "Sales Invoice"
-	for name in purchase_invoice_names:
-		invoice_types_by_name[name] = "Purchase Invoice"
-
-	if not invoice_types_by_name:
-		return {}
-
-	invoice_names = list(invoice_types_by_name)
-	related_gl_entries = frappe.db.sql(
-		"""
-		select
-			name as gl_entry, posting_date, creation, party_type, party,
-			voucher_type, voucher_no, against_voucher_type, against_voucher,
-			debit, credit
-		from `tabGL Entry`
-		where
-			company = %(company)s
-			and is_cancelled = 0
-			and posting_date <= %(to_date)s
-			and (
-				(voucher_type in ('Sales Invoice', 'Purchase Invoice') and voucher_no in %(invoice_names)s)
-				or (against_voucher_type in ('Sales Invoice', 'Purchase Invoice') and against_voucher in %(invoice_names)s)
-			)
-		order by posting_date, creation, name
-		""",
-		{
-			"company": filters.company,
-			"to_date": filters.to_date,
-			"invoice_names": invoice_names,
-		},
-		as_dict=1,
-	)
-
-	running_outstanding = {invoice_name: 0 for invoice_name in invoice_names}
-	outstanding_by_gl_entry = {}
-
-	for gle in related_gl_entries:
-		invoice_name = get_invoice_name_for_gl_entry(gle, invoice_types_by_name)
-		if not invoice_name:
-			continue
-
-		invoice_type = invoice_types_by_name[invoice_name]
-		if invoice_type == "Sales Invoice":
-			running_outstanding[invoice_name] += flt(gle.debit) - flt(gle.credit)
-		elif invoice_type == "Purchase Invoice":
-			running_outstanding[invoice_name] += flt(gle.credit) - flt(gle.debit)
-
-		outstanding_by_gl_entry[gle.gl_entry] = running_outstanding[invoice_name]
-
-	return outstanding_by_gl_entry
-
-
-def get_invoice_name_for_gl_entry(gle, invoice_types_by_name):
-	if gle.voucher_type in ("Sales Invoice", "Purchase Invoice") and gle.voucher_no in invoice_types_by_name:
-		# Only the customer/supplier ledger line creates invoice outstanding.
-		if gle.voucher_type == "Sales Invoice" and gle.party_type == "Customer":
-			return gle.voucher_no
-		if gle.voucher_type == "Purchase Invoice" and gle.party_type == "Supplier":
-			return gle.voucher_no
-
-	if (
-		gle.against_voucher_type in ("Sales Invoice", "Purchase Invoice")
-		and gle.against_voucher in invoice_types_by_name
-	):
-		return gle.against_voucher
-
-	return None
-
-
-def set_outstanding_and_interest(gle, invoice_outstanding_by_gl_entry):
-	if gle.get("gl_entry") not in invoice_outstanding_by_gl_entry:
-		return
-
-	gle["outstanding_amount"] = invoice_outstanding_by_gl_entry[gle.gl_entry]
-	gle["interest_per_day"] = gle.outstanding_amount * 0.12 / 365
 
 
 def get_report_summary(data, filters):
 	currency = filters.get("presentation_currency") or filters.get("company_currency")
 	total_debit = 0
 	total_credit = 0
-	latest_invoice_summary = {}
+	total_outstanding = 0
+	total_interest_as_on_date = 0
 
 	for row in data:
 		if not row.get("posting_date"):
+			if normalize_total_label(row.get("account")) == "Total":
+				total_outstanding = flt(row.get("outstanding_amount"))
+				total_interest_as_on_date = flt(row.get("interest_as_on_date"))
 			continue
 
 		total_debit += flt(row.get("debit"))
 		total_credit += flt(row.get("credit"))
 
-		invoice_key = row.get("sales_invoice_number") or row.get("purchase_invoice_number")
-		if invoice_key and row.get("outstanding_amount") is not None:
-			latest_invoice_summary[invoice_key] = {
-				"outstanding_amount": flt(row.get("outstanding_amount")),
-				"interest_per_day": flt(row.get("interest_per_day")),
-				"interest_as_on_date": flt(row.get("interest_as_on_date")),
-			}
-
-	total_outstanding = sum(
-		summary["outstanding_amount"] for summary in latest_invoice_summary.values()
-	)
-	total_interest_as_on_date = sum(
-		summary["interest_as_on_date"] for summary in latest_invoice_summary.values()
-	)
 	net_balance = total_debit - total_credit
-
-	if flt(net_balance, 2) == 0:
-		total_outstanding = 0
-		total_interest_as_on_date = 0
 
 	return [
 		{
@@ -928,21 +819,49 @@ def get_account_type_map(company):
 
 
 def get_result_as_list(data, filters):
-	balance = 0
+	cumulative_outstanding = 0
+	total_interest_as_on_date = 0
 
 	for d in data:
-		if not d.get("posting_date"):
-			balance = 0
+		is_transaction = is_transaction_row(d)
 
-		balance = get_balance(d, balance, "debit", "credit")
+		if is_transaction:
+			debit = flt(d.get("debit"))
+			credit = flt(d.get("credit"))
 
-		d["balance"] = balance
+			d["balance"] = debit - credit
+
+			if d.get("voucher_type") == "Sales Invoice":
+				cumulative_outstanding += debit
+				d["outstanding_amount"] = cumulative_outstanding
+				d["interest_per_day"] = cumulative_outstanding * 0.12 / 365
+				d["interest_as_on_date"] = d.interest_per_day * flt(d.get("due_days"))
+				total_interest_as_on_date += flt(d.get("interest_as_on_date"))
+			else:
+				d["outstanding_amount"] = None
+				d["interest_per_day"] = None
+				d["interest_as_on_date"] = None
+
+		elif normalize_total_label(d.get("account")) == "Total":
+			d["balance"] = flt(d.get("debit")) - flt(d.get("credit"))
+			d["outstanding_amount"] = cumulative_outstanding
+			d["interest_as_on_date"] = total_interest_as_on_date
+		elif normalize_total_label(d.get("account")) == "Closing (Opening + Total)":
+			d["balance"] = flt(d.get("debit")) - flt(d.get("credit"))
 
 		d["account_currency"] = filters.account_currency
 
 		d["presentation_currency"] = filters.presentation_currency
 
 	return data
+
+
+def is_transaction_row(row):
+	return bool(row.get("posting_date") and row.get("voucher_type") and row.get("voucher_no"))
+
+
+def normalize_total_label(label):
+	return cstr(label).strip("'")
 
 
 def get_supplier_invoice_details():
