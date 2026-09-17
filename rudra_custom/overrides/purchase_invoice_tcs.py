@@ -232,6 +232,9 @@ def _get_previous_amount(doc, category, rate_row):
 	For Gross Total basis: adds back withholding-deduct rows from each prior
 	invoice to restore the original pre-TCS value stored in the DB.
 	"""
+	# Prior purchases consume the cumulative threshold even when TDS was not
+	# applied on those invoices; apply_tds controls withholding generation for a
+	# transaction, not whether it contributes to threshold consumption.
 	if _is_gross_total_basis(category):
 		sql = """
 		SELECT COALESCE(SUM(
@@ -250,7 +253,6 @@ def _get_previous_amount(doc, category, rate_row):
 		  AND pi.posting_date BETWEEN %(from_date)s AND %(to_date)s
 		  AND pi.name != %(name)s
 		  AND pi.docstatus = 1
-		  AND pi.apply_tds = 1
 		"""
 	else:
 		sql = """
@@ -261,7 +263,6 @@ def _get_previous_amount(doc, category, rate_row):
 		  AND posting_date BETWEEN %(from_date)s AND %(to_date)s
 		  AND name != %(name)s
 		  AND docstatus = 1
-		  AND apply_tds = 1
 		"""
 
 	result = frappe.db.sql(sql, {
