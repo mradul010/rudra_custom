@@ -4,32 +4,54 @@
 	function setup_freight_handlers(doctype) {
 		frappe.ui.form.on(doctype, {
 			setup(frm) {
-				frm.set_query("custom_freight_account", () => ({
+				frm.set_query("account_head", "custom_freight_charges", () => ({
 					filters: {
 						company: frm.doc.company,
 						is_group: 0,
 						disabled: 0,
 					},
 				}));
-			},
-
-			custom_freight_and_forwarding_charges(frm) {
-				recalculate_freight(frm);
-			},
-
-			custom_freight_taxable(frm) {
-				recalculate_freight(frm);
-			},
-
-			custom_freight_account(frm) {
-				recalculate_freight(frm);
+				frm.set_query("cost_center", "custom_freight_charges", () => ({
+					filters: {
+						company: frm.doc.company,
+					},
+				}));
 			},
 
 			company(frm) {
-				frm.set_value("custom_freight_account", "");
+				(frm.doc.custom_freight_charges || []).forEach((row) => {
+					row.account_head = "";
+					row.cost_center = "";
+				});
+				frm.refresh_field("custom_freight_charges");
+				recalculate_freight(frm);
+			},
+
+			custom_freight_charges_add(frm) {
+				recalculate_freight(frm);
+			},
+
+			custom_freight_charges_remove(frm) {
+				recalculate_freight(frm);
 			},
 		});
 	}
+
+	frappe.ui.form.on("Freight and Forwarding Charge", {
+		charge_type(frm, cdt, cdn) {
+			const row = locals[cdt][cdn];
+			if (row.charge_type === "Actual") {
+				frappe.model.set_value(cdt, cdn, "rate", 0);
+			}
+			recalculate_freight(frm);
+		},
+		account_head: recalculate_freight,
+		description: recalculate_freight,
+		rate: recalculate_freight,
+		amount: recalculate_freight,
+		taxable: recalculate_freight,
+		cost_center: recalculate_freight,
+	});
 
 	function recalculate_freight(frm) {
 		if (frm.__custom_freight_recalculating || frm.is_new() === undefined) return;

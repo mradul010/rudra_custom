@@ -5,3 +5,4 @@
 [post_model_sync]
 # Patches added in this section will be executed after doctypes are migrated
 rudra_custom.patches.v16_0.create_sales_freight_fields
+rudra_custom.patches.v16_0.migrate_sales_freight_to_child_table
