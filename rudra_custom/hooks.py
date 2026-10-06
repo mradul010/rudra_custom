@@ -43,7 +43,11 @@ app_license = "mit"
 # page_js = {"page" : "public/js/file.js"}
 
 # include js in doctype views
-# doctype_js = {"doctype" : "public/js/doctype.js"}
+doctype_js = {
+	"Quotation": "public/js/sales_freight.js",
+	"Sales Order": "public/js/sales_freight.js",
+	"Sales Invoice": "public/js/sales_freight.js",
+}
 # doctype_list_js = {"doctype" : "public/js/doctype_list.js"}
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
 # doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}
@@ -143,7 +147,19 @@ app_license = "mit"
 doc_events = {
 	"Purchase Invoice": {
 		"before_validate": "rudra_custom.overrides.purchase_invoice_tcs.fix_tcs_on_excess_amount",
-	}
+	},
+	"Quotation": {
+		"before_validate": "rudra_custom.selling.sales_freight.before_validate",
+		"validate": "rudra_custom.selling.sales_freight.validate",
+	},
+	"Sales Order": {
+		"before_validate": "rudra_custom.selling.sales_freight.before_validate",
+		"validate": "rudra_custom.selling.sales_freight.validate",
+	},
+	"Sales Invoice": {
+		"before_validate": "rudra_custom.selling.sales_freight.before_validate",
+		"validate": "rudra_custom.selling.sales_freight.validate",
+	},
 }
 
 # Scheduled Tasks
@@ -176,9 +192,9 @@ doc_events = {
 # ------------------------------
 #
 # Specify custom mixins to extend the standard doctype controller.
-# extend_doctype_class = {
-# 	"Task": "rudra_custom.custom.task.CustomTaskMixin"
-# }
+extend_doctype_class = {
+	"Sales Invoice": "rudra_custom.selling.sales_freight.SalesInvoiceFreightMixin",
+}
 
 # Overriding Methods
 # ------------------------------
